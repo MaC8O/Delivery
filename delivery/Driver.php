@@ -2,6 +2,7 @@
 session_start();
 require_once __DIR__ . '/Classes/Driver.php';
 require_once __DIR__ . '/Database/Database.php';
+
 use DELIVERY\Driver\Driver;
 use DELIVERY\Database\Database;
 
@@ -12,7 +13,7 @@ if (!isset($_SESSION['role']) || $_SESSION['role'] != 'driver') {
 }
 
 // Fetch assigned orders for this driver
-$driverId = $_SESSION['user_id']; // Assuming driver ID is stored in session
+$driverId = $_SESSION['user']['id']; // Assuming driver ID is stored in session
 $db = new Database();
 $orders = $db->getConnection()->prepare("SELECT * FROM orders WHERE driver_id = :driver_id");
 $orders->bindParam(':driver_id', $driverId);
@@ -25,6 +26,12 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_status'])) {
     $status = $_POST['status'];
 
     try {
+        // Ensure the status is a valid option
+        $validStatuses = ['pending', 'delivered'];
+        if (!in_array($status, $validStatuses)) {
+            throw new Exception('Invalid status update.');
+        }
+
         $updateQuery = "UPDATE orders SET status = :status WHERE id = :id";
         $updateStmt = $db->getConnection()->prepare($updateQuery);
         $updateStmt->bindParam(':status', $status);
@@ -50,10 +57,73 @@ $assignedOrders = $orders->fetchAll(PDO::FETCH_ASSOC);
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Driver Dashboard</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #f0f2f5;
+            font-family: Arial, sans-serif;
+        }
+        .navbar {
+            background-color: #007bff;
+        }
+        .navbar-brand, .nav-link {
+            color: #ffffff !important;
+        }
+        .nav-link:hover {
+            color: #e0e0e0 !important;
+        }
+        .container {
+            margin-top: 30px;
+        }
+        h2 {
+            margin-bottom: 20px;
+            color: #343a40;
+        }
+        .alert {
+            margin-bottom: 20px;
+        }
+        .table {
+            background-color: #ffffff;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        .table th {
+            background-color: #007bff;
+            color: #ffffff;
+        }
+        .status-dropdown {
+            width: 150px;
+        }
+        .btn-primary {
+            background-color: #007bff;
+            border: none;
+        }
+        .btn-primary:hover {
+            background-color: #0056b3;
+        }
+        footer {
+            margin-top: 40px;
+            text-align: center;
+            color: #6c757d;
+        }
+    </style>
 </head>
 <body>
 
-<div class="container mt-5">
+<nav class="navbar navbar-expand-lg navbar-light">
+    <div class="container-fluid">
+        <a class="navbar-brand" href="#">Delivery System</a>
+        <div class="collapse navbar-collapse" id="navbarNav">
+            <ul class="navbar-nav ms-auto">
+                <li class="nav-item">
+                    <a class="nav-link" href="login.php">Logout</a>
+                </li>
+            </ul>
+        </div>
+    </div>
+</nav>
+
+<div class="container">
     <h2>Assigned Deliveries</h2>
 
     <!-- Display Success or Error Messages -->
@@ -75,12 +145,11 @@ $assignedOrders = $orders->fetchAll(PDO::FETCH_ASSOC);
     <?php endif; ?>
 
     <!-- List of Assigned Orders -->
-    <table class="table">
+    <table class="table table-striped">
         <thead>
             <tr>
                 <th>Order ID</th>
                 <th>Client Name</th>
-                <th>Address</th>
                 <th>Contact Info</th>
                 <th>Status</th>
                 <th>Action</th>
@@ -89,20 +158,19 @@ $assignedOrders = $orders->fetchAll(PDO::FETCH_ASSOC);
         <tbody>
             <?php foreach ($assignedOrders as $order): ?>
                 <tr>
-                    <td><?= $order['id']; ?></td>
-                    <td><?= $order['client_name']; ?></td>
-                    <td><?= $order['address']; ?></td>
-                    <td><?= $order['contact_info']; ?></td>
-                    <td><?= ucfirst($order['status']); ?></td>
+                    <td><?= htmlspecialchars($order['id']); ?></td>
+                    <td><?= htmlspecialchars($order['client_name']); ?></td>
+                    <td><?= htmlspecialchars($order['contact_info']); ?></td>
+                    <td><?= ucfirst(htmlspecialchars($order['status'])); ?></td>
                     <td>
                         <form method="POST" action="driver.php">
                             <input type="hidden" name="order_id" value="<?= $order['id']; ?>">
-                            <select name="status" class="form-select d-inline w-50" required>
+                            <select name="status" class="form-select status-dropdown" required>
+                                <option value="">Change Status</option>
                                 <option value="pending" <?= $order['status'] == 'pending' ? 'selected' : ''; ?>>Pending</option>
-                                <option value="picked up" <?= $order['status'] == 'picked up' ? 'selected' : ''; ?>>Picked Up</option>
                                 <option value="delivered" <?= $order['status'] == 'delivered' ? 'selected' : ''; ?>>Delivered</option>
                             </select>
-                            <button type="submit" class="btn btn-success" name="update_status">Update Status</button>
+                            <button type="submit" name="update_status" class="btn btn-primary mt-2">Update</button>
                         </form>
                     </td>
                 </tr>
@@ -110,6 +178,10 @@ $assignedOrders = $orders->fetchAll(PDO::FETCH_ASSOC);
         </tbody>
     </table>
 </div>
+
+<footer>
+    <p>&copy; <?= date("Y"); ?> Delivery System. All Rights Reserved.</p>
+</footer>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
 </body>

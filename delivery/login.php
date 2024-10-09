@@ -1,67 +1,79 @@
 <?php
-// Start a session
 session_start();
-
-// Include necessary classes
-require_once 'Classes/User.php';
-require_once 'Classes/Admin.php';
-require_once 'Classes/Driver.php';
 require_once 'Database/Database.php';
-
 use DELIVERY\Database\Database;
-use DELIVERY\User\User;
-use DELIVERY\Classes\Admin\Admin;
-use DELIVERY\Driver\Driver;
 
-// Check if the form is submitted
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
+
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-    $email = $_POST['email'];
-    $password = $_POST['password'];
-    $role = $_POST['role'];
+    $email = trim($_POST['email']);
+    $password = trim($_POST['password']);
+    $role = trim($_POST['role']);
 
-    // Create a database connection
-    $db = new Database();
-    $conn = $db->getConnection();
+    $conn = Database::getInstance()->getConnection();
 
-    // Prepare the query based on the selected role
-    $query = "SELECT * FROM user WHERE email = :email AND permission = :role";
+    if (!$conn) {
+        $_SESSION['error'] = "Database connection failed!";
+        header('Location: login.php');
+        exit();
+    }
+
+    error_log("Login attempt: email = $email, role = $role");
+
+    // Ensure the role is set
+    if (empty($role)) {
+        $_SESSION['error'] = "Role is required!";
+        header('Location: login.php');
+        exit();
+    }
+
+    // Query to fetch user data based on email and role
+    $query = "SELECT * FROM user WHERE email = :email";
     $statement = $conn->prepare($query);
     $statement->bindParam(':email', $email);
-    $statement->bindParam(':role', $role);
-    
-    // Execute the query
-    $statement->execute();
+
+    if (!$statement->execute()) {
+        $_SESSION['error'] = "Query execution failed!";
+        header('Location: login.php');
+        exit();
+    }
+
     $result = $statement->fetch(PDO::FETCH_ASSOC);
 
-    // Verify the user credentials
-    if ($result && password_verify($password, $result['password'])) {
-        $_SESSION['user'] = $result; // Store user info in session
-        $_SESSION['success'] = "Login successful! Welcome, " . $result['fullname'];
-        
-        // Debugging output
-        error_log("User Role: " . $result['permission']); // Log the user role for debugging
-        error_log("Session Data: " . print_r($_SESSION, true)); // Log session data for debugging
-    
-        // Redirect based on user role
-        switch ($result['permission']) {
-            case 'admin':
-                header('Location: admin.php'); // Redirect to admin page
-                break;
-            case 'driver':
-                header('Location: driver.php'); // Redirect to driver page
-                break;
-            case 'client':
-                header('Location: user.php'); // Redirect to user page
-                break;
-            default:
-                header('Location: dashboard.php'); // Redirect to a dashboard or home page if role is not recognized
-                break;
+    // Check if user exists and role matches
+    if ($result && $result['permission'] === $role) {
+        // Verify the password
+        if (password_verify($password, $result['password'])) {
+            $_SESSION['user'] = $result;
+            $_SESSION['success'] = "Login successful! Welcome, " . $result['fullname'];
+            $_SESSION['role'] = $result['permission']; // Set the role in session
+
+            switch ($result['permission']) {
+                case 'admin':
+                    header('Location: Admin.php');
+                    exit();
+                case 'driver':
+                    header('Location: Driver.php');
+                    exit();
+                case 'client':
+                    header('Location: User.php');
+                    exit();
+                default:
+                    $_SESSION['error'] = "Invalid user role!";
+                    header('Location: login.php');
+                    exit();
+            }
+        } else {
+            $_SESSION['error'] = "Invalid email or password!";
+            error_log("Password verification failed for email: " . $email);
         }
-        exit();
     } else {
-        $_SESSION['error'] = "Invalid email or password!";
+        $_SESSION['error'] = "User not found or role mismatch!";
+        error_log("No user found for email: " . $email . " with role: " . $role);
     }
-}    
+}
 ?>
 
 <!DOCTYPE html>
@@ -70,9 +82,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login Page</title>
-    <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
-    <!-- Custom CSS -->
     <style>
         body {
             background: linear-gradient(135deg, #4e54c8, #8f94fb);
@@ -154,7 +164,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     </form>
 </div>
 
-<!-- Bootstrap JS -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

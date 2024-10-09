@@ -22,15 +22,20 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
     // Instantiate the appropriate class based on the role
     $user = null;
+    $permission = null; // Initialize permission
+
     switch ($role) {
         case 'admin':
-            $user = new Admin($email, $password, $fullname);
+            $permission = 'admin'; // Set permission for admin
+            $user = new Admin($email, $password, $fullname,$permission); // Admin instantiation
             break;
         case 'user': 
-            $user = new User($email, $password, $fullname); 
+            $permission = 'client'; // Specify 'client' as the permission for user
+            $user = new User($email, $password, $fullname, $permission); // User instantiation
             break;
         case 'driver':
-            $user = new Driver($email, $password, $fullname);
+            $permission = 'driver'; // Set permission for driver
+            $user = new Driver($email, $password, $fullname,$permission); // Driver instantiation
             break;
         default:
             $_SESSION['error'] = "Invalid role selected";
@@ -41,7 +46,13 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     // Attempt to create the user in the database
     try {
         if ($user) {
-            $user->createUser($email, $password, $fullname);
+            // Pass email, password, full name, and role (permission) to the createUser method
+            if ($role === 'user') {
+                $user->createUser($email, $password, $fullname, 'client'); // Call createUser for user with 'client' permission
+            } else {
+                $user->createUser($email, $password, $fullname, $permission); // Call createUser for admin/driver
+            }
+
             $_SESSION['success'] = "User successfully registered!";
             header('Location: login.php'); // Redirect to login page after successful signup
             exit();
@@ -60,9 +71,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Signup Page</title>
-    <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
-    <!-- Custom CSS (Optional) -->
     <style>
         body {
             background-color: #f8f9fa;
@@ -82,7 +91,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 <div class="container signup-container">
     <h2 class="text-center mb-4">Signup</h2>
     
-    <!-- Display Success or Error Messages -->
     <?php if (isset($_SESSION['error'])): ?>
         <div class="alert alert-danger">
             <?php 
@@ -100,7 +108,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         </div>
     <?php endif; ?>
 
-    <!-- Signup Form -->
     <form action="signup.php" method="POST">
         <div class="mb-3">
             <label for="fullname" class="form-label">Full Name</label>
@@ -119,20 +126,18 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             <select class="form-select" id="role" name="role" required>
                 <option value="">Choose role</option>
                 <option value="admin">Admin</option>
-                <option value="user">User</option> <!-- Ensure this is lowercase -->
+                <option value="user">User</option>
                 <option value="driver">Driver</option>
             </select>
         </div>
         <button type="submit" class="btn btn-primary w-100">Sign Up</button>
     </form>
 
-    <!-- Link to Login Page -->
     <div class="text-center mt-3">
         <p>Already have an account? <a href="login.php">Login here</a></p>
     </div>
 </div>
 
-<!-- Bootstrap JS (Optional) -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

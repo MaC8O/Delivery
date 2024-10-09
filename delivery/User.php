@@ -3,86 +3,51 @@ session_start();
 require_once __DIR__ . '/Database/Database.php';
 use DELIVERY\Database\Database;
 
-// Initialize Database connection
-$db = new Database();
-
-// Check if user is logged in
-if (!isset($_SESSION['user_id'])) {
-    header('Location: login.php'); // Redirect to login page if not logged in
-    exit();
+// Check if the user is logged in
+if (!isset($_SESSION['user'])) {
+    header('Location: login.php');
+    exit;
 }
 
-// Product categories
-$categories = [
-    'Cosmetics' => [
-        ['id' => 1, 'name' => 'Lipstick', 'price' => 12.99],
-        ['id' => 2, 'name' => 'Korean Makeup', 'price' => 29.99],
-        ['id' => 3, 'name' => 'Lotion', 'price' => 9.99],
-        ['id' => 4, 'name' => 'Shampoo', 'price' => 7.99],
-    ],
-    'Clothes' => [
-        ['id' => 5, 'name' => 'Jeans', 'price' => 40.00],
-        ['id' => 6, 'name' => 'T-Shirt', 'price' => 15.00],
-        ['id' => 7, 'name' => 'Pants', 'price' => 35.00],
-        ['id' => 8, 'name' => 'Jacket', 'price' => 55.00],
-    ],
-    'Shoes' => [
-        ['id' => 9, 'name' => 'Sneakers', 'price' => 60.00],
-        ['id' => 10, 'name' => 'Flipflops', 'price' => 10.00],
-        ['id' => 11, 'name' => 'Sport Shoes', 'price' => 80.00],
-    ],
-];
+$user = $_SESSION['user']; // Logged-in user details
+$email = $user['email']; // Use email to fetch order history
+$currentPage = isset($_GET['page']) ? (int)$_GET['page'] : 1;
+$recordsPerPage = 5; // Number of orders per page
 
-// Initialize session variables
-if (!isset($_SESSION['cart'])) {
-    $_SESSION['cart'] = [];
-}
-if (!isset($_SESSION['ordered_items'])) {
-    $_SESSION['ordered_items'] = [];
-}
+// Fetch user order history with pagination
+function fetchUserOrders($email, $currentPage, $recordsPerPage) {
+    $db = new Database();
+    $conn = $db->getConnection();
+    $offset = ($currentPage - 1) * $recordsPerPage;
+    $orders = [];
 
-// Handle adding items to the cart
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    if (isset($_POST['add_to_cart'])) {
-        $itemId = (int)$_POST['item_id']; // Ensure it's an integer
-        if (!in_array($itemId, $_SESSION['cart'])) {
-            $_SESSION['cart'][] = $itemId;
-            $_SESSION['success'] = 'Item added to cart successfully!';
-        } else {
-            $_SESSION['error'] = 'Item is already in the cart!';
-        }
-        header('Location: user.php');
-        exit();
-    }
+    if ($conn) {
+        // Count total records for pagination
+        $countStmt = $conn->prepare("SELECT COUNT(*) FROM orders WHERE client_id = (SELECT id FROM user WHERE email = :email)");
+        $countStmt->bindParam(':email', $email, PDO::PARAM_STR);
+        $countStmt->execute();
+        $totalRecords = $countStmt->fetchColumn();
 
-    // Handle order confirmation or cancellation
-    if (isset($_POST['action']) && isset($_POST['order_item'])) {
-        $itemId = (int)$_POST['order_item']; // Ensure it's an integer
-        $userId = (int)$_SESSION['user_id']; // Ensure it's an integer
+        // Fetch records with limit and offset for pagination
+        $stmt = $conn->prepare("
+            SELECT id, status, total_amount, created_at
+            FROM orders
+            WHERE client_id = (SELECT id FROM user WHERE email = :email)
+            ORDER BY created_at DESC
+            LIMIT :limit OFFSET :offset
+        ");
+        $stmt->bindParam(':email', $email, PDO::PARAM_STR);
+        $stmt->bindParam(':limit', $recordsPerPage, PDO::PARAM_INT);
+        $stmt->bindParam(':offset', $offset, PDO::PARAM_INT);
+        $stmt->execute();
+        $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-        if ($_POST['action'] === 'confirm') {
-            // Insert order into the database
-            $stmt = $db->getConnection()->prepare("INSERT INTO orders (client_id, item_id, status) VALUES (?, ?, 'pending')");
-            if ($stmt->execute([$userId, $itemId])) {
-                $_SESSION['success'] = 'Order confirmed!';
-                $_SESSION['ordered_items'][] = $itemId; // Add to ordered items for display
-            } else {
-                $_SESSION['error'] = 'Failed to confirm order!';
-            }
-        } elseif ($_POST['action'] === 'cancel') {
-            $_SESSION['success'] = 'Order cancelled!';
-        }
-        header('Location: user.php');
-        exit();
+        return [$orders, $totalRecords];
     }
 }
 
-// Fetch user's past orders
-$userId = (int)$_SESSION['user_id']; // Ensure it's an integer
-$stmt = $db->getConnection()->prepare("SELECT * FROM orders WHERE client_id = ?");
-$stmt->execute([$userId]);
-$pastOrders = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
+list($orders, $totalRecords) = fetchUserOrders($email, $currentPage, $recordsPerPage);
+$totalPages = ceil($totalRecords / $recordsPerPage);
 ?>
 
 <!DOCTYPE html>
@@ -90,114 +55,113 @@ $pastOrders = $stmt->fetchAll(PDO::FETCH_ASSOC);
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>User Dashboard</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+    <title>Order History</title>
+    <style>
+        body {
+            background: linear-gradient(135deg, #ffafbd, #ffc3a0);
+            font-family: 'Roboto', sans-serif;
+            color: #333;
+        }
+        .container {
+            margin-top: 50px;
+            padding: 30px;
+            background: rgba(255, 255, 255, 0.9);
+            border-radius: 10px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+        }
+        h2 {
+            margin-bottom: 30px;
+            text-align: center;
+            font-weight: 700;
+            color: #4e54c8;
+        }
+        .logout-btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            font-size: 12px; /* Smaller font size for the logout button */
+            padding: 5px 10px; /* Smaller padding */
+        }
+        table {
+            margin-top: 20px;
+        }
+        th, td {
+            text-align: center;
+        }
+        .pagination {
+            justify-content: center;
+        }
+        .page-link {
+            color: #4e54c8;
+        }
+        .page-item.active .page-link {
+            background-color: #4e54c8;
+            border-color: #4e54c8;
+            color: white;
+        }
+        .page-item.disabled .page-link {
+            color: #6c757d;
+        }
+    </style>
 </head>
 <body>
 
-<div class="container mt-5">
-    <h2>Enjoy your shopping with us...</h2>
+<div class="container">
+    <h2>Order History for <?= htmlspecialchars($user['fullname']) ?></h2>
 
-    <?php foreach ($categories as $categoryName => $items): ?>
-        <h4><?= htmlspecialchars($categoryName); ?></h4>
-        <div class="row">
-            <?php foreach ($items as $item): ?>
-                <div class="col-md-4 mb-3">
-                    <div class="card">
-                        <div class="card-body">
-                            <h5 class="card-title"><?= htmlspecialchars($item['name']); ?></h5>
-                            <p class="card-text">$<?= number_format($item['price'], 2); ?></p>
-                            <form method="POST" action="user.php">
-                                <input type="hidden" name="item_id" value="<?= $item['id']; ?>">
-                                <button type="submit" name="add_to_cart" class="btn btn-primary">Add to Cart</button>
-                            </form>
-                            <?php if (in_array($item['id'], $_SESSION['ordered_items'])): ?>
-                                <span class="text-success">&#10003; Ordered</span>
-                            <?php endif; ?>
-                        </div>
-                    </div>
-                </div>
-            <?php endforeach; ?>
-        </div>
-    <?php endforeach; ?>
+    <a href="login.php" class="btn btn-danger logout-btn">Logout</a>
 
-    <!-- Success and error messages -->
-    <?php if (isset($_SESSION['success'])): ?>
-        <div class="alert alert-success">
-            <?= $_SESSION['success'];
-            unset($_SESSION['success']);
-            ?>
-        </div>
-    <?php endif; ?>
-    <?php if (isset($_SESSION['error'])): ?>
-        <div class="alert alert-danger">
-            <?= $_SESSION['error'];
-            unset($_SESSION['error']);
-            ?>
-        </div>
-    <?php endif; ?>
-
-    <!-- Cart Section -->
-    <h2 class="mt-5">Your Cart</h2>
-    <?php if (!empty($_SESSION['cart'])): ?>
-        <table class="table">
-            <thead>
-                <tr>
-                    <th>Item ID</th>
-                    <th>Action</th>
-                </tr>
-            </thead>
-            <tbody>
-                <?php foreach ($_SESSION['cart'] as $itemId): ?>
+    <!-- Order History Table -->
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>Order ID</th>
+                <th>Status</th>
+                <th>Total Amount</th>
+                <th>Date</th>
+            </tr>
+        </thead>
+        <tbody>
+            <?php if (!empty($orders)): ?>
+                <?php foreach ($orders as $order): ?>
                     <tr>
-                        <td><?= htmlspecialchars($itemId); ?></td>
-                        <td>
-                            <form method="POST" action="user.php" style="display:inline;">
-                                <input type="hidden" name="order_item" value="<?= $itemId; ?>">
-                                <button type="submit" name="action" value="confirm" class="btn btn-success">Confirm</button>
-                            </form>
-                            <form method="POST" action="user.php" style="display:inline;">
-                                <input type="hidden" name="order_item" value="<?= $itemId; ?>">
-                                <button type="submit" name="action" value="cancel" class="btn btn-danger">Cancel</button>
-                            </form>
-                        </td>
+                        <td><?= htmlspecialchars($order['id']) ?></td>
+                        <td><?= htmlspecialchars($order['status']) ?></td>
+                        <td><?= htmlspecialchars($order['total_amount']) ?></td>
+                        <td><?= htmlspecialchars($order['created_at']) ?></td>
                     </tr>
                 <?php endforeach; ?>
-            </tbody>
-        </table>
-    <?php else: ?>
-        <p>No items in the cart.</p>
-    <?php endif; ?>
-
-    <!-- Display Past Orders -->
-    <h2 class="mt-5">Your Past Orders</h2>
-    <?php if ($pastOrders): ?>
-        <table class="table">
-            <thead>
+            <?php else: ?>
                 <tr>
-                    <th>Order ID</th>
-                    <th>Item ID</th>
-                    <th>Status</th>
-                    <th>Order Date</th>
+                    <td colspan="4" class="text-center">No orders found.</td>
                 </tr>
-            </thead>
-            <tbody>
-                <?php foreach ($pastOrders as $order): ?>
-                    <tr>
-                        <td><?= htmlspecialchars($order['id']); ?></td>
-                        <td><?= htmlspecialchars($order['item_id']); ?></td>
-                        <td><?= htmlspecialchars($order['status']); ?></td>
-                        <td><?= htmlspecialchars($order['created_at']); ?></td>
-                    </tr>
-                <?php endforeach; ?>
-            </tbody>
-        </table>
-    <?php else: ?>
-        <p>You have no past orders.</p>
-    <?php endif; ?>
+            <?php endif; ?>
+        </tbody>
+    </table>
 
+    <!-- Pagination -->
+    <?php if ($totalPages > 1): ?>
+        <nav aria-label="Page navigation">
+            <ul class="pagination">
+                <li class="page-item <?= $currentPage == 1 ? 'disabled' : '' ?>">
+                    <a class="page-link" href="?page=<?= $currentPage - 1 ?>">Previous</a>
+                </li>
+                <?php for ($i = 1; $i <= $totalPages; $i++): ?>
+                    <li class="page-item <?= $i == $currentPage ? 'active' : '' ?>">
+                        <a class="page-link" href="?page=<?= $i ?>"><?= $i ?></a>
+                    </li>
+                <?php endfor; ?>
+                <li class="page-item <?= $currentPage == $totalPages ? 'disabled' : '' ?>">
+                    <a class="page-link" href="?page=<?= $currentPage + 1 ?>">Next</a>
+                </li>
+            </ul>
+        </nav>
+    <?php endif; ?>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
+ 

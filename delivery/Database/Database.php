@@ -1,4 +1,5 @@
 <?php
+
 namespace DELIVERY\Database;
 
 require_once 'Configuration/config.php'; // Assuming you have your constants defined here
@@ -7,24 +8,36 @@ use PDO;
 use PDOException;
 
 class Database {
+    private static $instance = null; // Singleton instance
     private $connection;
 
-    // Constructor to establish a database connection
+    // Private constructor to prevent direct instantiation
     public function __construct() {
         try {
-            // Use the provided database credentials (DEL, 1234)
             $this->connection = new PDO(
                 "mysql:host=" . DB_HOST . ";dbname=" . DB_NAME,
-                DB_USER, 
+                DB_USER,
                 DB_PASSWORD
             );
-
-            // Set PDO error mode to exception for proper error handling
+            // Set error mode to exceptions
             $this->connection->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    
+            // Test the connection
+            error_log("Database connection successful!");
+    
         } catch (PDOException $ex) {
-            // Handle connection errors
+            error_log("Database connection failed: " . $ex->getMessage());
             die("Connection failed: " . $ex->getMessage());
         }
+    }
+    
+
+    // Function to get the Singleton instance
+    public static function getInstance() {
+        if (self::$instance === null) {
+            self::$instance = new Database();
+        }
+        return self::$instance;
     }
 
     // Function to return the database connection
